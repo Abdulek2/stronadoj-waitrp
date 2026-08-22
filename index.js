@@ -3,8 +3,16 @@ const express = require('express');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Konfiguracja bota Discord
-const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+// Ważne: middleware do odczycywania JSON z zapytań ze strony
+app.use(express.json());
+
+// Konfiguracja bota Discord (potrzebne uprawnienia do zarządzania członkami/rolami)
+const client = new Client({ 
+    intents: [
+        GatewayIntentBits.Guilds, 
+        GatewayIntentBits.GuildMembers
+    ] 
+});
 
 const BOT_STATUS_TEXT = "Wpisz tutaj swój status"; 
 const BOT_STATUS_TYPE = ActivityType.Playing; 
@@ -19,7 +27,6 @@ client.once('ready', () => {
 
 client.login(process.env.BOT_TOKEN);
 
-// Zmienne środowiskowe z ustawień hostingu
 const CLIENT_ID = process.env.CLIENT_ID;
 const CLIENT_SECRET = process.env.CLIENT_SECRET;
 const BOT_TOKEN = process.env.BOT_TOKEN; 
@@ -28,11 +35,62 @@ const GUILD_ID = process.env.GUILD_ID;
 const ROLE_ID = process.env.ROLE_ID; 
 const FRONTEND_URL = process.env.FRONTEND_URL; 
 
+// Nowe zmienne środowiskowe na role i kanały
+const ROLE_APLIKANT_ID = process.env.ROLE_APLIKANT_ID;
+const ROLE_DOJ_ID = process.env.ROLE_DOJ_ID;
+const ROLE_OBYWATEL_ID = process.env.ROLE_OBYWATEL_ID;
+const WELCOME_CHANNEL_ID = process.env.WELCOME_CHANNEL_ID;
+const RULES_CHANNEL_ID = process.env.RULES_CHANNEL_ID;
+
 app.get('/', (req, res) => {
     res.send('Serwer dziala! Mozesz sie logowac.');
 });
 
-// Strona callback - teraz przekazuje PEŁNE dane użytkownika w linku powrotnym
+// Endpoint wywoływany ze strony, gdy rekruter kliknie "Przyjmij"
+app.post('/api/accept', async (req, res) => {
+    const { discordId } = req.body;
+    if (!discordId) return res.status(400).json({ error: 'Brak discordId' });
+
+    try {
+        const guild = await client.guilds.fetch(GUILD_ID);
+        const member = await guild.members.fetch(discordId);
+
+        // 1. Nadanie ról: Aplikant i Department of Justice
+        await member.roles.add([ROLE_APLIKANT_ID, ROLE_DOJ_ID]);
+
+        // 2. Wysłanie wiadomości na wskazany kanał z oznaczeniem użytkownika
+        const channel = await guild.channels.fetch(WELCOME_CHANNEL_ID);
+        if (channel) {
+            await channel.send(`Gratulacje <@${discordId}>, zostałeś przyjęty do departamentu! Zapoznaj się z <#${RULES_CHANNEL_ID}>.`);
+        }
+
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Błąd przy przyjmowaniu:', error);
+        res.status(500).json({ error: 'Nie udało się nadać ról lub wysłać wiadomości.' });
+    }
+});
+
+// Endpoint wywoływany ze strony, gdy rekruter kliknie "Zwolnij"
+app.post('/api/fire', async (req, res) => {
+    const { discordId } = req.body;
+    if (!discordId) return res.status(400).json({ error: 'Brak discordId' });
+
+    try {
+        const guild = await client.guilds.fetch(GUILD_ID);
+        const member = await guild.members.fetch(discordId);
+
+        // Zabranie wszystkich ról i zostawienie tylko roli Obywatel
+        await member.roles.set([ROLE_OBYWATEL_ID]);
+
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Błąd przy zwalnianiu:', error);
+        res.status(500).json({ error: 'Nie udało się odebrać ról.' });
+    }
+});
+
+// Strona callback po autoryzacji OAuth2
 app.get('/callback', async (req, res) => {
     const code = req.query.code;
     if (!code) return res.redirect(`${FRONTEND_URL}?status=error&reason=no_code`);
@@ -53,13 +111,11 @@ app.get('/callback', async (req, res) => {
         const tokenData = await tokenResponse.json();
         if (!tokenData.access_token) return res.redirect(`${FRONTEND_URL}?status=error&reason=token_failed`);
 
-        // Pobieramy dane użytkownika z Discorda
         const userResponse = await fetch('https://discord.com/api/users/@me', {
             headers: { Authorization: `Bearer ${tokenData.access_token}` },
         });
         const userData = await userResponse.json();
 
-        // Pobieramy dane członka gildii (aby sprawdzić role i ksywkę na serwerze)
         const memberResponse = await fetch(`https://discord.com/api/guilds/${GUILD_ID}/members/${userData.id}`, {
             headers: { Authorization: `Bot ${BOT_TOKEN}` },
         });
@@ -71,11 +127,9 @@ app.get('/callback', async (req, res) => {
         const memberData = await memberResponse.json();
         const userRoles = memberData.roles;
 
-        // Ustalamy DisplayName (priorytet ma ksywka z serwera, potem nazwa globalna, a na końcu zwykły username)
         const displayName = memberData.nick || userData.global_name || userData.username;
         const avatarUrl = userData.avatar ? `https://cdn.discordapp.com/avatars/${userData.id}/${userData.avatar}.png` : '';
 
-        // Sprawdzanie rangi i przekierowanie z pełnymi parametrami
         if (userRoles.includes(ROLE_ID)) {
             res.redirect(`${FRONTEND_URL}?status=success&discordId=${userData.id}&username=${encodeURIComponent(userData.username)}&displayName=${encodeURIComponent(displayName)}&avatar=${encodeURIComponent(avatarUrl)}`);
         } else {
