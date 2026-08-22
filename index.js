@@ -1,6 +1,6 @@
 const express = require('express');
 const app = express();
-const PORT = process.env.PORT  3000;
+const PORT = process.env.PORT || 3000;
 
  Zmienne środowiskowe z ustawień hostingu (Render.com)
 const CLIENT_ID = process.env.CLIENT_ID;
