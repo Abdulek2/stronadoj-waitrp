@@ -1,20 +1,19 @@
 const { Client, GatewayIntentBits, ActivityType } = require('discord.js');
 const express = require('express');
-const cors = require('cors'); // <--- DODANE
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Konfiguracja CORS (zapobiega blokowaniu zapytań ze strony)
-app.use(cors({
-    origin: [
-        'https://waitrp-doj.bolt.host', 
-        'http://localhost:3000', 
-        'http://localhost:5173'
-    ],
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-    credentials: true
-}));
+// --- WŁASNA OBSŁUGA CORS (bez instalowania dodatkowych paczek) ---
+app.use((req, res, next) => {
+    res.header('Access-Control-Allow-Origin', 'https://waitrp-doj.bolt.host');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.header('Access-Control-Allow-Credentials', 'true');
+    if (req.method === 'OPTIONS') {
+        return res.sendStatus(200);
+    }
+    next();
+});
 
 // Ważne: middleware do odczycywania JSON z zapytań ze strony
 app.use(express.json());
