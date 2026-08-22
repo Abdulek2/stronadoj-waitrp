@@ -6,7 +6,7 @@ const PORT = process.env.PORT || 3000;
 // Konfiguracja bota Discord
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
-const BOT_STATUS_TEXT = "Wpisz tutaj swój status"; // <-- TUTAJ WPISZ WŁASNY STATUS
+const BOT_STATUS_TEXT = "Sąd Najwyższy TOPKA"; // <-- TUTAJ WPISZ WŁASNY STATUS
 const BOT_STATUS_TYPE = ActivityType.Playing; // Opcje: Playing (Gra w), Streaming (Transmisja), Listening (Słucha), Watching (Ogląda)
 
 client.once('ready', () => {
