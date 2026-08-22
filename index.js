@@ -26,13 +26,13 @@ const BOT_TOKEN = process.env.BOT_TOKEN;
 const REDIRECT_URI = process.env.REDIRECT_URI;
 const GUILD_ID = process.env.GUILD_ID; 
 const ROLE_ID = process.env.ROLE_ID; 
-const FRONTEND_URL = process.env.FRONTEND_URL; // Adres Twojej strony z Bolta
+const FRONTEND_URL = process.env.FRONTEND_URL; 
 
 app.get('/', (req, res) => {
     res.send('Serwer dziala! Mozesz sie logowac.');
 });
 
-// Strona callback po autoryzacji OAuth2 - teraz robi PRZEKIEROWANIE na Twoją stronę
+// Strona callback - teraz przekazuje PEŁNE dane użytkownika w linku powrotnym
 app.get('/callback', async (req, res) => {
     const code = req.query.code;
     if (!code) return res.redirect(`${FRONTEND_URL}?status=error&reason=no_code`);
@@ -53,26 +53,33 @@ app.get('/callback', async (req, res) => {
         const tokenData = await tokenResponse.json();
         if (!tokenData.access_token) return res.redirect(`${FRONTEND_URL}?status=error&reason=token_failed`);
 
+        // Pobieramy dane użytkownika z Discorda
         const userResponse = await fetch('https://discord.com/api/users/@me', {
             headers: { Authorization: `Bearer ${tokenData.access_token}` },
         });
         const userData = await userResponse.json();
 
+        // Pobieramy dane członka gildii (aby sprawdzić role i ksywkę na serwerze)
         const memberResponse = await fetch(`https://discord.com/api/guilds/${GUILD_ID}/members/${userData.id}`, {
             headers: { Authorization: `Bot ${BOT_TOKEN}` },
         });
 
         if (memberResponse.status === 404) {
-            return res.redirect(`${FRONTEND_URL}?status=not_in_guild&username=${encodeURIComponent(userData.username)}`);
+            return res.redirect(`${FRONTEND_URL}?status=not_in_guild&discordId=${userData.id}&username=${encodeURIComponent(userData.username)}`);
         }
 
         const memberData = await memberResponse.json();
         const userRoles = memberData.roles;
 
+        // Ustalamy DisplayName (priorytet ma ksywka z serwera, potem nazwa globalna, a na końcu zwykły username)
+        const displayName = memberData.nick || userData.global_name || userData.username;
+        const avatarUrl = userData.avatar ? `https://cdn.discordapp.com/avatars/${userData.id}/${userData.avatar}.png` : '';
+
+        // Sprawdzanie rangi i przekierowanie z pełnymi parametrami
         if (userRoles.includes(ROLE_ID)) {
-            res.redirect(`${FRONTEND_URL}?status=success&username=${encodeURIComponent(userData.username)}`);
+            res.redirect(`${FRONTEND_URL}?status=success&discordId=${userData.id}&username=${encodeURIComponent(userData.username)}&displayName=${encodeURIComponent(displayName)}&avatar=${encodeURIComponent(avatarUrl)}`);
         } else {
-            res.redirect(`${FRONTEND_URL}?status=denied&username=${encodeURIComponent(userData.username)}`);
+            res.redirect(`${FRONTEND_URL}?status=denied&discordId=${userData.id}&username=${encodeURIComponent(userData.username)}&displayName=${encodeURIComponent(displayName)}`);
         }
 
     } catch (error) {
