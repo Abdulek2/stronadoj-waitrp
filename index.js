@@ -10,7 +10,7 @@ const REDIRECT_URI = process.env.REDIRECT_URI;
 const GUILD_ID = process.env.GUILD_ID; 
 const ROLE_ID = process.env.ROLE_ID; 
 
-app.get('', (req, res) = {
+app.get('/', (req, res) => {
     res.send('Serwer działa! Możesz się logować.');
 });
 
