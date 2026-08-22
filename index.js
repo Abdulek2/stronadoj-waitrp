@@ -2,7 +2,7 @@ const express = require('express');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
- Zmienne środowiskowe z ustawień hostingu (Render.com)
+ // zmienne srodowiskowe z rendera
 const CLIENT_ID = process.env.CLIENT_ID;
 const CLIENT_SECRET = process.env.CLIENT_SECRET;
 const BOT_TOKEN = process.env.BOT_TOKEN; 
@@ -20,7 +20,7 @@ app.get('callback', async (req, res) = {
     if (!code) return res.send('Błąd Brak kodu autoryzacji.');
 
     try {
-         1. Wymieniamy kod od użytkownika na Token Dostępu
+         //1. Wymieniamy kod od użytkownika na Token Dostępu
         const tokenResponse = await fetch('httpsdiscord.comapioauth2token', {
             method 'POST',
             headers { 'Content-Type' 'applicationx-www-form-urlencoded' },
@@ -36,13 +36,13 @@ app.get('callback', async (req, res) = {
         const tokenData = await tokenResponse.json();
         if (!tokenData.access_token) return res.send('Błąd Nieudana autoryzacja.');
 
-         2. Pobieramy ID zalogowanego użytkownika
+         //2. pobieranie id uzytkownika
         const userResponse = await fetch('httpsdiscord.comapiusers@me', {
             headers { Authorization `Bearer ${tokenData.access_token}` },
         });
         const userData = await userResponse.json();
 
-         3. Sprawdzamy, czy ten użytkownik jest na Twoim serwerze (używając tokenu Bota)
+         //3. Sprawdza czy osoba jest na serwerze
         const memberResponse = await fetch(`httpsdiscord.comapiguilds${GUILD_ID}members${userData.id}`, {
             headers { Authorization `Bot ${BOT_TOKEN}` },
         });
@@ -54,7 +54,7 @@ app.get('callback', async (req, res) = {
         const memberData = await memberResponse.json();
         const userRoles = memberData.roles;
 
-         4. Finał - Sprawdzamy czy ma konkretną rangę
+         //4. test czy ma range
         if (userRoles.includes(ROLE_ID)) {
             res.send(`h1 style=colorgreen;Sukces!h1pWitaj ${userData.username}, posiadasz wymaganą rangę.p`);
         } else {
