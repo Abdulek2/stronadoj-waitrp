@@ -3,7 +3,7 @@ const express = require('express');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// --- WŁASNA OBSŁUGA CORS (bez instalowania dodatkowych paczek) ---
+// --- WŁASNA OBSŁUGA CORS ---
 app.use((req, res, next) => {
     res.header('Access-Control-Allow-Origin', 'https://waitrp-doj.bolt.host');
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
@@ -15,10 +15,10 @@ app.use((req, res, next) => {
     next();
 });
 
-// Ważne: middleware do odczycywania JSON z zapytań ze strony
+// Middleware do odczytywania JSON
 app.use(express.json());
 
-// Konfiguracja bota Discord (potrzebne uprawnienia do zarządzania członkami/rolami)
+// Konfiguracja bota Discord
 const client = new Client({ 
     intents: [
         GatewayIntentBits.Guilds, 
@@ -47,7 +47,7 @@ const GUILD_ID = process.env.GUILD_ID;
 const ROLE_ID = process.env.ROLE_ID; 
 const FRONTEND_URL = process.env.FRONTEND_URL; 
 
-// Nowe zmienne środowiskowe na role i kanały
+// Zmienne środowiskowe na role i kanały
 const ROLE_APLIKANT_ID = process.env.ROLE_APLIKANT_ID;
 const ROLE_DOJ_ID = process.env.ROLE_DOJ_ID;
 const ROLE_OBYWATEL_ID = process.env.ROLE_OBYWATEL_ID;
@@ -58,7 +58,7 @@ app.get('/', (req, res) => {
     res.send('Serwer dziala! Mozesz sie logowac.');
 });
 
-// Endpoint wywoływany ze strony, gdy rekruter kliknie "Przyjmij"
+// Endpoint: Przyjmij gracza
 app.post('/api/accept', async (req, res) => {
     const { discordId } = req.body;
     if (!discordId) return res.status(400).json({ error: 'Brak discordId' });
@@ -67,10 +67,8 @@ app.post('/api/accept', async (req, res) => {
         const guild = await client.guilds.fetch(GUILD_ID);
         const member = await guild.members.fetch(discordId);
 
-        // 1. Nadanie ról: Aplikant i Department of Justice
         await member.roles.add([ROLE_APLIKANT_ID, ROLE_DOJ_ID]);
 
-        // 2. Wysłanie wiadomości na wskazany kanał z oznaczeniem użytkownika
         const channel = await guild.channels.fetch(WELCOME_CHANNEL_ID);
         if (channel) {
             await channel.send(`Gratulacje <@${discordId}>, zostałeś przyjęty do departamentu! Zapoznaj się z <#${RULES_CHANNEL_ID}>.`);
@@ -83,7 +81,7 @@ app.post('/api/accept', async (req, res) => {
     }
 });
 
-// Endpoint wywoływany ze strony, gdy rekruter kliknie "Zwolnij"
+// Endpoint: Zwolnij gracza
 app.post('/api/fire', async (req, res) => {
     const { discordId } = req.body;
     if (!discordId) return res.status(400).json({ error: 'Brak discordId' });
@@ -92,17 +90,16 @@ app.post('/api/fire', async (req, res) => {
         const guild = await client.guilds.fetch(GUILD_ID);
         const member = await guild.members.fetch(discordId);
 
-        // Zabranie wszystkich ról i zostawienie tylko roli Obywatel
         await member.roles.set([ROLE_OBYWATEL_ID]);
 
         res.json({ success: true });
     } catch (error) {
         console.error('Błąd przy zwalnianiu:', error);
-        res.status(500).json({ error: 'Nie udało się odebrać ról.' });
+       res.status(500).json({ error: 'Nie udało się odebrać ról.' });
     }
 });
 
-// Strona callback po autoryzacji OAuth2
+// Strona callback po autoryzacji OAuth2 z rygorystycznym sprawdzaniem serwera i ról
 app.get('/callback', async (req, res) => {
     const code = req.query.code;
     if (!code) return res.redirect(`${FRONTEND_URL}?status=error&reason=no_code`);
@@ -123,33 +120,46 @@ app.get('/callback', async (req, res) => {
         const tokenData = await tokenResponse.json();
         if (!tokenData.access_token) return res.redirect(`${FRONTEND_URL}?status=error&reason=token_failed`);
 
+        // Pobranie danych użytkownika z Discorda
         const userResponse = await fetch('https://discord.com/api/users/@me', {
             headers: { Authorization: `Bearer ${tokenData.access_token}` },
         });
         const userData = await userResponse.json();
 
+        // Sprawdzenie czy użytkownik należy do serwera (GUILD_ID) przez API bota
         const memberResponse = await fetch(`https://discord.com/api/guilds/${GUILD_ID}/members/${userData.id}`, {
             headers: { Authorization: `Bot ${BOT_TOKEN}` },
         });
 
         if (memberResponse.status === 404) {
+            // Użytkownik nie jest na serwerze Discord
             return res.redirect(`${FRONTEND_URL}?status=not_in_guild&discordId=${userData.id}&username=${encodeURIComponent(userData.username)}`);
         }
 
+        if (!memberResponse.ok) {
+            // W razie innego błędu API
+            return res.redirect(`${FRONTEND_URL}?status=server_error`);
+        }
+
         const memberData = await memberResponse.json();
-        const userRoles = memberData.roles;
+        const userRoles = memberData.roles || [];
 
         const displayName = memberData.nick || userData.global_name || userData.username;
         const avatarUrl = userData.avatar ? `https://cdn.discordapp.com/avatars/${userData.id}/${userData.avatar}.png` : '';
 
-        if (userRoles.includes(ROLE_ID)) {
+        // Weryfikacja ról: Użytkownik musi posiadać rolę Obywatel (ROLE_OBYWATEL_ID) lub uprawnioną rolę dostępu (ROLE_ID)
+        const hasAccessRole = userRoles.includes(ROLE_OBYWATEL_ID) || userRoles.includes(ROLE_ID);
+
+        if (hasAccessRole) {
+            // Sukces: użytkownik jest na serwerze i ma odpowiednią rolę
             res.redirect(`${FRONTEND_URL}?status=success&discordId=${userData.id}&username=${encodeURIComponent(userData.username)}&displayName=${encodeURIComponent(displayName)}&avatar=${encodeURIComponent(avatarUrl)}`);
         } else {
+            // Odmowa: użytkownik jest na serwerze, ale NIE ma roli Obywatel
             res.redirect(`${FRONTEND_URL}?status=denied&discordId=${userData.id}&username=${encodeURIComponent(userData.username)}&displayName=${encodeURIComponent(displayName)}`);
         }
 
     } catch (error) {
-        console.error(error);
+        console.error("Błąd w callbacku:", error);
         res.redirect(`${FRONTEND_URL}?status=server_error`);
     }
 });
